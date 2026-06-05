@@ -1,0 +1,5 @@
+# Ignore Build Config
+/breakout/_build/
+
+# Ignore VS Code Settings
+/.vscode/
