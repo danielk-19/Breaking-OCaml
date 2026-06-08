@@ -1,2 +1,3 @@
 (library
- (name breakout))
+ (name breakout_tools)
+ (libraries raylib))

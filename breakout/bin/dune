@@ -1,4 +1,4 @@
 (executable
  (public_name breakout)
  (name main)
- (libraries breakout raylib))
+ (libraries breakout_tools raylib))
