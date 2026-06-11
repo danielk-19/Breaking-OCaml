@@ -30,12 +30,12 @@ let setup () =
     let pos_y = ((float_of_int screen_height) /. 2. -. rad) in
 
     let position = Vector2.create pos_x pos_y in
-    let velocity = Vector2.create 0. 0. in
+    let velocity = Vector2.create 5. 5. in
     let radius = (int_of_float rad) in
     {Objs.Ball.position; velocity; radius}
   in
 
-  {Objs.State.paddle; ball; pause = true; frames_counter = 0};;
+  {Objs.State.paddle; ball; pause = true; frames_counter = 0}
 
 let rec loop (state : Objs.State.t) =
   match (Raylib.window_should_close ()) with
@@ -54,6 +54,7 @@ let rec loop (state : Objs.State.t) =
         state
       else
         let {Objs.Paddle.position; velocity; dimensions} = state.paddle in
+
         let velocity =
           if (is_key_pressed_repeat Key.Left && (Vector2.x position) > 0.) then -15.
           else if (is_key_pressed_repeat Key.Right && (Vector2.x position) < ((float_of_int screen_width) -. (Vector2.x dimensions))) then 15.
@@ -66,10 +67,46 @@ let rec loop (state : Objs.State.t) =
         in
 
         let paddle = {Objs.Paddle.position; velocity; dimensions} in
+        
         {state with paddle}
+    in
+
+    let state =
+      if state.pause then
+        state
+      else
+        let {Objs.Ball.position; velocity; radius} = state.ball in
+
+        let velocity = 
+          let vx =
+            if (Vector2.x position <= float_of_int radius ||
+            Vector2.x position >= float_of_int (screen_width - radius)) then
+              -.(Vector2.x velocity)
+            else (Vector2.x velocity)
+          in
+
+          let vy =
+            if (Vector2.y position <= float_of_int radius ||
+            Vector2.y position >= float_of_int (screen_height - radius) ||
+            (((Vector2.y position +. float_of_int radius) -. Vector2.y state.paddle.position) >= 0. &&
+            ((Vector2.x position +. float_of_int radius) >= Vector2.x state.paddle.position && (Vector2.x position -. float_of_int radius) <= (Vector2.x state.paddle.position +. Vector2.x state.paddle.dimensions)))) then
+              -.(Vector2.y velocity)
+            else (Vector2.y velocity)
+          in
+
+          Vector2.create vx vy
+        in
+
+        let position = Vector2.create
+          (Vector2.x position +. Vector2.x velocity)
+          (Vector2.y position +. Vector2.y velocity)
+        in
+
+        let ball = {Objs.Ball.position; velocity; radius} in
+        {state with ball}
     in
 
     Objs.State.draw state;
     loop state
   
-let () = setup () |> loop;;
+let () = setup () |> loop
