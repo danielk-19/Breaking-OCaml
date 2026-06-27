@@ -34,34 +34,39 @@ module State =
             ball : Ball.t;
             blocks : Block.t list;
             pause : bool;
-            score: int
+            score: int;
+            frame_counter: int
         }
         
-        (* Fixing Error Currently *)
-        let collision (ball : Ball.t) (block : Block.t) =
+        (* let collision (ball : Ball.t) (block : Block.t) =
             let open Raylib in
             (((Vector2.y ball.position +. float_of_int ball.radius) >= Vector2.y block.position &&
             (Vector2.y ball.position -. float_of_int ball.radius) <= (Vector2.y block.position +. Vector2.y block.dimensions)) &&
             ((Vector2.x ball.position +. float_of_int ball.radius) >= Vector2.x block.position &&
-            (Vector2.x ball.position -. float_of_int ball.radius) <= (Vector2.x block.position +. Vector2.x block.dimensions)))
+            (Vector2.x ball.position -. float_of_int ball.radius) <= (Vector2.x block.position +. Vector2.x block.dimensions))) *)
 
+        (* Fixing Error Currently *)
         let collision_x (ball : Ball.t) (block : Block.t) =
             let open Raylib in
-            collision ball block (*&&
-            (Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position >= Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position &&
-            Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position >= Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius) ||
-            (Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius >= Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position &&
-            Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius >= Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius)
-            *)
+            check_collision_circle_rec ball.position (float_of_int ball.radius) (Rectangle.create (Vector2.x block.position) (Vector2.y block.position) (Vector2.x block.dimensions) (Vector2.y block.dimensions))
+            
+            (*&&
+            ((Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position) >= (Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position) &&
+            (Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position) >= (Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius)) ||
+            ((Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius) >= (Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position) &&
+            (Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius) >= (Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius))
+*)
         let collision_y (ball : Ball.t) (block : Block.t) =
             let open Raylib in
-            collision ball block (*&&
-            (Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position >= Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position &&
-            Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position >= Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius) ||
-            (Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius >= Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position &&
-            Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius >= Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius)
-            *)
-        let draw {paddle; ball; blocks; pause; score} =
+            check_collision_circle_rec ball.position (float_of_int ball.radius) (Rectangle.create (Vector2.x block.position) (Vector2.y block.position) (Vector2.x block.dimensions) (Vector2.y block.dimensions))
+            
+            (*&&
+            ((Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position) >= (Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position) &&
+            (Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position) >= (Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius)) ||
+            ((Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius) >= (Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position) &&
+            (Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius) >= (Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius))
+*)      
+        let draw {paddle; ball; blocks; pause; score; frame_counter} =
             let open Raylib in
             begin_drawing ();
 

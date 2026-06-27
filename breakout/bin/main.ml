@@ -10,7 +10,8 @@ let setup () =
   let open Raylib in
 
   init_window screen_width screen_height "Breakout";
-  set_target_fps 60;
+  set_target_fps (get_monitor_refresh_rate 0);
+  set_exit_key Key.Null;
 
   let paddle = 
     let dim_x = 300. in
@@ -52,7 +53,7 @@ let setup () =
     make_blocks ((float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) 100. []
   in
 
-  {Objs.State.paddle; ball; blocks; pause = true; score = 0}
+  {Objs.State.paddle; ball; blocks; pause = true; score = 0; frame_counter = 0}
 
 let rec loop (state : Objs.State.t) =
   match (Raylib.window_should_close ()) with
@@ -60,14 +61,23 @@ let rec loop (state : Objs.State.t) =
   | false ->
     let open Raylib in
 
+    let button_bounds = Rectangle.create 885. 25. 50. 50. in
+    if (check_collision_point_rec (get_mouse_position ()) button_bounds &&
+      is_mouse_button_pressed MouseButton.Left) then
+      close_window () else ();
+    
     let state =
       if is_key_pressed Key.Up then {state with pause = false}
       else if is_key_pressed Key.Space then {state with pause = true}
-      else state
+      else {state with frame_counter = state.frame_counter + 1}
+    in
+
+    let rate = 
+      if (get_fps () / 60) = 0 then 1 else (get_fps () / 60)
     in
 
     let state =
-      if state.pause then
+      if state.pause || not (state.frame_counter mod rate = 0) then
         state
       else
         let {Objs.Paddle.position; velocity; dimensions} = state.paddle in
@@ -90,7 +100,7 @@ let rec loop (state : Objs.State.t) =
     in
 
     let state =
-      if state.pause then
+      if state.pause || not (state.frame_counter mod rate = 0) then
         state
       else
         let {Objs.Ball.position; velocity; radius} = state.ball in
@@ -126,27 +136,27 @@ let rec loop (state : Objs.State.t) =
             Vector2.create (Vector2.x position +. Vector2.x velocity) (Vector2.y position +. Vector2.y velocity)
         in
 
-        let rec check_block_collision blocks =
+        let rec check_block_collision blocks curr_velocity =
           match blocks with
-          | [] -> velocity
+          | [] -> curr_velocity
           | block :: rest ->
             let vx =
               if (Objs.State.collision_x state.ball block) then
-                -.(Vector2.x velocity)
-              else (Vector2.x velocity)
+                -.(Vector2.x curr_velocity)
+              else (Vector2.x curr_velocity)
             in
 
             let vy =
               if (Objs.State.collision_y state.ball block) then
-                -.(Vector2.y velocity)
-              else (Vector2.y velocity)
+                -.(Vector2.y curr_velocity)
+              else (Vector2.y curr_velocity)
             in
 
             let new_velocity = Vector2.create vx vy in
-            if new_velocity <> velocity then new_velocity else check_block_collision rest
+            check_block_collision rest new_velocity
         in
 
-        let velocity = check_block_collision state.blocks in
+        let velocity = check_block_collision state.blocks velocity in
 
         let blocks = List.filter (fun (block : Objs.Block.t) ->
           not (
@@ -158,7 +168,6 @@ let rec loop (state : Objs.State.t) =
         let ball = {Objs.Ball.position; velocity; radius} in
         {state with ball; blocks; score = state.score + (List.length state.blocks - List.length blocks)}
     in
-
     Objs.State.draw state;
     loop state
   
