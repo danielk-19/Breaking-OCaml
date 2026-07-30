@@ -13,47 +13,7 @@ let setup () =
   set_target_fps (get_monitor_refresh_rate 0);
   set_exit_key Key.Null;
 
-  let paddle = 
-    let dim_x = 300. in
-    let dim_y = 50. in
-    let pos_x = ((float_of_int screen_width) /. 2. -. dim_x /. 2.) in
-    let pos_y = ((float_of_int screen_height) -. dim_y /. 2. -. 50.) in  
-
-    let position = Vector2.create pos_x pos_y in
-    let velocity = 0. in
-    let dimensions = Vector2.create dim_x dim_y in
-    {Objs.Paddle.position; velocity; dimensions}
-  in
-
-  let ball =
-    let rad = 10. in
-    let pos_x = ((float_of_int screen_width) /. 2.) in
-    let pos_y = ((float_of_int screen_height) /. 2.) in
-
-    let position = Vector2.create pos_x pos_y in
-    let velocity = Vector2.create 5. 5. in
-    let radius = (int_of_float rad) in
-    {Objs.Ball.position; velocity; radius}
-  in
-
-  let blocks = 
-    let dim_x = 200. in
-    let dim_y = 100. in
-    let num_blocks_x = 4 in
-    let num_blocks_y = 2 in
-    let offset = 5. in
-    let rec make_blocks x y acc =
-      if y >= (dim_y *. float_of_int num_blocks_y +. offset *. float_of_int num_blocks_y +. 50.) then acc
-      else if x >= (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x +. (float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) then
-        make_blocks ((float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) (y +. dim_y +. offset) acc
-      else
-        let block = {Objs.Block.position = Vector2.create x y; dimensions = Vector2.create dim_x dim_y; color = Raylib.Color.red} in
-        make_blocks (x +. dim_x +. offset) y (block :: acc)
-    in
-    make_blocks ((float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) 100. []
-  in
-
-  {Objs.State.paddle; ball; blocks; pause = true; score = 0; frame_counter = 0}
+  Objs.State.reset ()
 
 let rec loop (state : Objs.State.t) =
   match (Raylib.window_should_close ()) with
@@ -65,27 +25,26 @@ let rec loop (state : Objs.State.t) =
     if (check_collision_point_rec (get_mouse_position ()) button_bounds &&
       is_mouse_button_pressed MouseButton.Left) then
       close_window () else ();
-    
+
     let state =
-      if is_key_pressed Key.Up then {state with pause = false}
-      else if is_key_pressed Key.Space then {state with pause = true}
+      if (is_key_pressed Key.R) then Objs.State.reset ()
+      else if (is_key_pressed Key.Escape || state.lives = 0 || List.is_empty state.blocks) then {state with pause = true}
+      else if is_key_pressed Key.Up then {state with pause = false}
       else {state with frame_counter = state.frame_counter + 1}
     in
 
-    let rate = 
-      if (get_fps () / 60) = 0 then 1 else (get_fps () / 60)
-    in
+    let rate = (1. /. float_of_int (get_fps ())) in
 
     let state =
-      if state.pause || not (state.frame_counter mod rate = 0) then
+      if state.pause then
         state
       else
         let {Objs.Paddle.position; velocity; dimensions} = state.paddle in
 
         let velocity =
-          if (is_key_down Key.Left && (Vector2.x position) > 0.) then -15.
+          if (is_key_down Key.Left && (Vector2.x position) > 0.) then -900. *. rate
           else if (is_key_down Key.Right &&
-            (Vector2.x position) < ((float_of_int screen_width) -. (Vector2.x dimensions))) then 15.
+            (Vector2.x position) < ((float_of_int screen_width) -. (Vector2.x dimensions))) then 900. *. rate
           else 0.
         in
 
@@ -100,75 +59,42 @@ let rec loop (state : Objs.State.t) =
     in
 
     let state =
-      if state.pause || not (state.frame_counter mod rate = 0) then
+      if state.pause then
         state
       else
         let {Objs.Ball.position; velocity; radius} = state.ball in
 
+        let dmg = Objs.State.ball_reset_required state.ball state.paddle in
+
         let velocity = 
-          let vx =
-            if (Vector2.x position <= float_of_int radius ||
-            Vector2.x position >= float_of_int (screen_width - radius) (*||
-            ((((Vector2.x position +. float_of_int radius) -. Vector2.x state.paddle.position) = 0. &&
-            ((Vector2.x position -. float_of_int radius) -. (Vector2.x state.paddle.position +. Vector2.x state.paddle.dimensions)) = 0.) &&
-            ((Vector2.y position +. float_of_int radius) >= Vector2.y state.paddle.position &&
-            (Vector2.y position -. float_of_int radius) <= (Vector2.y state.paddle.position +. Vector2.y state.paddle.dimensions)))*)) then
-              -.(Vector2.x velocity)
-            else (Vector2.x velocity)
-          in
-
-          let vy =
-            if (Vector2.y position <= float_of_int radius ||
-            (((Vector2.y position +. float_of_int radius) -. Vector2.y state.paddle.position) >= 0. &&
-            ((Vector2.x position +. float_of_int radius) >= Vector2.x state.paddle.position &&
-            (Vector2.x position -. float_of_int radius) <= (Vector2.x state.paddle.position +. Vector2.x state.paddle.dimensions)))) then
-              -.(Vector2.y velocity)
-            else (Vector2.y velocity)
-          in
-
-          Vector2.create vx vy
+          if (dmg) then
+            let vx, vy = Objs.State.random_ball_velocity () in
+            Vector2.create vx vy
+          else Objs.State.collision_handling state.ball state.paddle state.blocks
         in
+
+        let lives = if (dmg) then state.lives - 1 else state.lives in
 
         let position =
-          if ((Vector2.y position +. float_of_int radius) >= float_of_int screen_height) then
+          if (dmg) then
             Vector2.create (float_of_int screen_width /. 2.) (float_of_int screen_height /. 2.)
           else
-            Vector2.create (Vector2.x position +. Vector2.x velocity) (Vector2.y position +. Vector2.y velocity)
+            Vector2.create (Vector2.x position +. Vector2.x velocity *. rate) (Vector2.y position +. Vector2.y velocity *. rate)
         in
-
-        let rec check_block_collision blocks curr_velocity =
-          match blocks with
-          | [] -> curr_velocity
-          | block :: rest ->
-            let vx =
-              if (Objs.State.collision_x state.ball block) then
-                -.(Vector2.x curr_velocity)
-              else (Vector2.x curr_velocity)
-            in
-
-            let vy =
-              if (Objs.State.collision_y state.ball block) then
-                -.(Vector2.y curr_velocity)
-              else (Vector2.y curr_velocity)
-            in
-
-            let new_velocity = Vector2.create vx vy in
-            check_block_collision rest new_velocity
-        in
-
-        let velocity = check_block_collision state.blocks velocity in
 
         let blocks = List.filter (fun (block : Objs.Block.t) ->
           not (
-            (Objs.State.collision_x state.ball block) &&
-            (Objs.State.collision_y state.ball block)
+            (Objs.State.block_collision state.ball block)
           )
         ) state.blocks in
 
         let ball = {Objs.Ball.position; velocity; radius} in
-        {state with ball; blocks; score = state.score + (List.length state.blocks - List.length blocks)}
+        {state with ball; blocks; score = state.score + (List.length state.blocks - List.length blocks); lives}
     in
-    Objs.State.draw state;
+    
+    if (state.lives = 0) then Objs.State.game_over ()
+    else if (List.is_empty state.blocks) then Objs.State.game_winner ()
+    else Objs.State.draw state;
     loop state
   
 let () = setup () |> loop
