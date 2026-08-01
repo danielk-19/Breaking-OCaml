@@ -21,16 +21,35 @@ let rec loop (state : Objs.State.t) =
   | false ->
     let open Raylib in
 
-    let button_bounds = Rectangle.create 885. 25. 50. 50. in
-    if (check_collision_point_rec (get_mouse_position ()) button_bounds &&
-      is_mouse_button_pressed MouseButton.Left) then
+    (* Cleanup Code *)
+    let exit_button_bounds = Rectangle.create 885. 25. 50. 50. in
+    if (Objs.State.button_pressed exit_button_bounds) then
       close_window () else ();
+    
+    let settings_text = "Settings" in
+    let settings_width = (measure_text settings_text 48) in
+    let settings_y = screen_height / 4 + 48 * 2 in
+    let settings_button_bounds = Rectangle.create
+      (float_of_int (screen_width / 2 - settings_width / 2))
+      (float_of_int settings_y)
+      (float_of_int settings_width)
+      (float_of_int 48)
+    in
+
+    let dim_x = get_screen_width () * 3 / 4 in
+    let dim_y = get_screen_height () * 3 / 4 in
+    let pos_x = (get_screen_width () - dim_x) / 2 in
+    let pos_y = (get_screen_height () - dim_y) / 2 in
+
+    let box = Rectangle.create (float_of_int pos_x) (float_of_int pos_y) (float_of_int dim_x) (float_of_int dim_y) in
 
     let state =
       if (is_key_pressed Key.R) then Objs.State.reset ()
       else if (is_key_pressed Key.Escape || state.lives = 0 || List.is_empty state.blocks) then {state with pause = true}
       else if is_key_pressed Key.Up then {state with pause = false}
-      else {state with frame_counter = state.frame_counter + 1}
+      else if (state.pause && Objs.State.button_pressed settings_button_bounds) then {state with menu = true}
+      else if (is_mouse_button_pressed MouseButton.Left && not (Objs.State.button_pressed box)) then {state with menu = false}
+      else state
     in
 
     let rate = (1. /. float_of_int (get_fps ())) in
@@ -75,6 +94,12 @@ let rec loop (state : Objs.State.t) =
 
         let lives = if (dmg) then state.lives - 1 else state.lives in
 
+        let blocks = List.filter (fun (block : Objs.Block.t) ->
+          not (
+            (Objs.State.block_collision state.ball block)
+          )
+        ) state.blocks in
+
         let position =
           if (dmg) then
             Vector2.create (float_of_int screen_width /. 2.) (float_of_int screen_height /. 2.)
@@ -82,18 +107,12 @@ let rec loop (state : Objs.State.t) =
             Vector2.create (Vector2.x position +. Vector2.x velocity *. rate) (Vector2.y position +. Vector2.y velocity *. rate)
         in
 
-        let blocks = List.filter (fun (block : Objs.Block.t) ->
-          not (
-            (Objs.State.block_collision state.ball block)
-          )
-        ) state.blocks in
-
         let ball = {Objs.Ball.position; velocity; radius} in
         {state with ball; blocks; score = state.score + (List.length state.blocks - List.length blocks); lives}
     in
     
     if (state.lives = 0) then Objs.State.game_over ()
-    else if (List.is_empty state.blocks) then Objs.State.game_winner ()
+    else if (List.is_empty state.blocks) then Objs.State.game_winner state.score
     else Objs.State.draw state;
     loop state
   

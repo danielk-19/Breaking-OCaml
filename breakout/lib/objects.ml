@@ -1,4 +1,16 @@
 (* Implemented Modules for Breakout *)
+open Raylib
+
+type gameState = 
+    | Start
+    | Active
+    | Pause
+    | GameLost
+    | GameWon
+
+type menuState =
+    | Main
+    | Settings
 
 module Ball =
     struct
@@ -36,15 +48,13 @@ module State =
             mutable pause : bool;
             mutable score : int;
             mutable lives : int;
-            mutable frame_counter : int
+            mutable menu : bool
         }
-        
-        (* let collision (ball : Ball.t) (block : Block.t) =
+
+        let button_pressed (bounds : Raylib.Rectangle.t) =
             let open Raylib in
-            (((Vector2.y ball.position +. float_of_int ball.radius) >= Vector2.y block.position &&
-            (Vector2.y ball.position -. float_of_int ball.radius) <= (Vector2.y block.position +. Vector2.y block.dimensions)) &&
-            ((Vector2.x ball.position +. float_of_int ball.radius) >= Vector2.x block.position &&
-            (Vector2.x ball.position -. float_of_int ball.radius) <= (Vector2.x block.position +. Vector2.x block.dimensions))) *)
+            (check_collision_point_rec (get_mouse_position ()) bounds &&
+            is_mouse_button_pressed MouseButton.Left)
 
         let wall_collision_x (ball : Ball.t) =
             let open Raylib in
@@ -72,6 +82,29 @@ module State =
             let hit = (((Vector2.x ball.position -. Vector2.x paddle.position) /. Vector2.x paddle.dimensions) -. 0.5) *. 2.0 in
             Float.max (-1.) (Float.min hit 1.) *. 1.0472
 
+        let wall_overlap (ball : Ball.t) =
+            let open Raylib in
+            let b_x = Vector2.x ball.position in 
+            let b_y = Vector2.y ball.position in 
+            let p_w = float_of_int (get_screen_width ()) in 
+            let radius = float_of_int ball.radius in
+
+            (* Determine overlaps *)
+            let right_overlap = p_w -. (b_x -. radius) in
+            let left_overlap = (b_x +. radius) in
+            let min_y = (b_y +. radius) in
+
+            let min_x = Float.min left_overlap right_overlap in
+
+            let x_diff, y_diff =
+                if (min_x < min_y) then
+                    if (Float.compare left_overlap right_overlap < 0) then (-.(left_overlap), 0.0)
+                    else (right_overlap, 0.0)
+                else
+                    (0.0, -.(min_y))
+            in
+            Vector2.create (b_x +. x_diff) (b_y +. y_diff)
+
         let ball_wall_collision_velocity (ball : Ball.t) =
             let open Raylib in
             let vx =
@@ -80,15 +113,13 @@ module State =
                 else (Vector2.x ball.velocity)
             in
 
-          (*||
-            (((Vector2.y position +. float_of_int radius) -. Vector2.y state.paddle.position) >= 0. &&
-            ((Vector2.x position +. float_of_int radius) >= Vector2.x state.paddle.position &&
-            (Vector2.x position -. float_of_int radius) <= (Vector2.x state.paddle.position +. Vector2.x state.paddle.dimensions)))*)
             let vy =
                 if (wall_collision_y ball) then
                     -.(Vector2.y ball.velocity)
                 else (Vector2.y ball.velocity)
             in
+
+            ball.position <- wall_overlap ball;
 
             Vector2.create vx vy
 
@@ -181,18 +212,6 @@ module State =
 
             let min_overlap = Float.min (Float.min left_overlap right_overlap) (Float.min top_overlap bottom_overlap) in
 
-            (* let dir_x =
-                if (((min_overlap = bottom_overlap || min_overlap = top_overlap) && Float.sign_bit (Vector2.x ball.velocity) <> Float.sign_bit vx) ||
-                    ((min_overlap = left_overlap || min_overlap = right_overlap) && not (Float.sign_bit (Vector2.x ball.velocity) <> Float.sign_bit vx))) then -1.
-                else 1.
-            in
-
-            let dir_y =
-                if (((min_overlap = left_overlap || min_overlap = right_overlap) && Float.sign_bit (Vector2.x ball.velocity) <> Float.sign_bit vx) ||
-                    ((min_overlap = bottom_overlap || min_overlap = top_overlap) && not (Float.sign_bit (Vector2.x ball.velocity) <> Float.sign_bit vx))) then -1.
-                else 1.
-            in *)
-
             let dir_x, dir_y =
                 if (min_overlap = left_overlap || min_overlap = right_overlap) then (-1., 1.)
                 else (1., -1.)
@@ -209,39 +228,10 @@ module State =
             if (block_collision ball block) then ball_block_collision_velocity ball block
             else check_block_collision ball rest
 
-            (* let vx =
-              if (Objs.State.block_collision state.ball block) then
-                -.(Vector2.x curr_velocity)
-              else (Vector2.x curr_velocity)
-            in
-
-            let vy =
-              if (Objs.State.block_collision state.ball block) then
-                -.(Vector2.y curr_velocity)
-              else (Vector2.y curr_velocity)
-            in *)
-
         let collision_handling (ball : Ball.t) (paddle : Paddle.t) (blocks : Block.t list) =
             if (paddle_collision ball paddle) then (ball_paddle_collision_velocity ball paddle)
             else if (wall_collision_x ball || wall_collision_y ball) then (ball_wall_collision_velocity ball)
             else check_block_collision ball blocks
-
-            (*&&
-            ((Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position) >= (Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position) &&
-            (Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position) >= (Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius)) ||
-            ((Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius) >= (Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position) &&
-            (Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius) >= (Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius))
-*)
-        (* let collision_y (ball : Ball.t) (block : Block.t) =
-            let open Raylib in
-            check_collision_circle_rec ball.position (float_of_int ball.radius) (Rectangle.create (Vector2.x block.position) (Vector2.y block.position) (Vector2.x block.dimensions) (Vector2.y block.dimensions))
-             *)
-            (*&&
-            ((Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position) >= (Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position) &&
-            (Vector2.y ball.position +. float_of_int ball.radius -. Vector2.y block.position) >= (Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius)) ||
-            ((Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius) >= (Vector2.x ball.position +. float_of_int ball.radius -. Vector2.x block.position) &&
-            (Vector2.y block.position +. Vector2.y block.dimensions -. Vector2.y ball.position -. float_of_int ball.radius) >= (Vector2.x block.position +. Vector2.x block.dimensions -. Vector2.x ball.position -. float_of_int ball.radius))
-*)      
 
         let random_ball_velocity () =
             let random_float = Random.float 1. in
@@ -292,31 +282,51 @@ module State =
                 let num_blocks_x = 8 in
                 let num_blocks_y = 4 in
                 let offset = 5. in
-                let rec make_blocks x y acc =
-                if y >= (dim_y *. float_of_int num_blocks_y +. offset *. float_of_int num_blocks_y +. 50.) then acc
-                else if x >= (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x +. (float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) then
-                    make_blocks ((float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) (y +. dim_y +. offset) acc
-                else
-                    let block = {Block.position = Vector2.create x y; dimensions = Vector2.create dim_x dim_y; color = Raylib.Color.red} in
-                    make_blocks (x +. dim_x +. offset) y (block :: acc)
+                let colors = [Color.blue; Color.red; Color.yellow; Color.green] in
+                let rec make_blocks x y acc color =
+                    if y >= (dim_y *. float_of_int num_blocks_y +. offset *. float_of_int num_blocks_y +. 50.) then acc
+                    else if x >= (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x +. (float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) then
+                        make_blocks ((float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) (y +. dim_y +. offset) acc (List.tl color)
+                    else
+                        let block = {Block.position = Vector2.create x y; dimensions = Vector2.create dim_x dim_y; color = List.hd color} in
+                        make_blocks (x +. dim_x +. offset) y (block :: acc) color
                 in
-                make_blocks ((float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) 100. []
+                make_blocks ((float_of_int screen_width -. (dim_x *. float_of_int num_blocks_x +. offset *. float_of_int num_blocks_x)) /. 2.) 100. [] colors
             in
 
-            {paddle; ball; blocks; pause = true; score = 0; lives = 5; frame_counter = 0}
+            {paddle; ball; blocks; pause = true; score = 0; lives = 5; menu = false}
 
-        let game_winner () =
+        let draw_exit_button () =
+            let open Raylib in
+
+            let dims = 50 in
+            let start_pos_x = get_screen_width () - 25 in
+            let start_pos_y = 25 in
+
+            let start_pos = Vector2.create (float_of_int (start_pos_x - dims)) (float_of_int start_pos_y) in
+            let end_pos = Vector2.create (float_of_int start_pos_x) (float_of_int (start_pos_y + dims)) in
+
+            draw_line_ex start_pos end_pos 10. Color.white;
+            
+            let start_pos = Vector2.create (float_of_int (start_pos_x - dims)) (float_of_int (start_pos_y + dims)) in
+            let end_pos = Vector2.create (float_of_int start_pos_x) (float_of_int start_pos_y) in
+            
+            draw_line_ex start_pos end_pos 10. Color.white
+
+        let game_winner (score : int) =
             let open Raylib in
             begin_drawing ();
 
             clear_background Color.black;
 
-            let text = "Winner!" in
+            let text = "Winner! Score: " ^ string_of_int score in
             let font_size = 48 in
             let font_width = (measure_text text font_size) in            
             draw_text text
                 (get_screen_width () / 2 - font_width / 2) (get_screen_height () / 2 - 48)
                 font_size Color.white;
+
+            draw_exit_button ();
 
             end_drawing ()
 
@@ -333,9 +343,43 @@ module State =
                 (get_screen_width () / 2 - font_width / 2) (get_screen_height () / 2 - 48)
                 font_size Color.white;
 
-            end_drawing ()
+            draw_exit_button ();
 
-        let draw {paddle; ball; blocks; pause; score; lives; frame_counter} =
+            end_drawing ()
+        
+        let settings_menu () =
+            let open Raylib in
+
+            let dim_x = get_screen_width () * 3 / 4 in
+            let dim_y = get_screen_height () * 3 / 4 in
+            let pos_x = (get_screen_width () - dim_x) / 2 in
+            let pos_y = (get_screen_height () - dim_y) / 2 in
+
+            let box = Rectangle.create (float_of_int pos_x) (float_of_int pos_y) (float_of_int dim_x) (float_of_int dim_y) in
+
+            draw_rectangle_rounded box 0.25 10 Color.lightgray;
+            draw_rectangle_rounded_lines_ex box 0.25 10 3. Color.black
+
+        let pause_menu (menu : bool) =
+            let open Raylib in
+
+            let text = "Press Up Arrow To Continue" in
+            let font_size = 48 in
+            let font_width = (measure_text text font_size) in
+            let font_x = get_screen_width () / 2 in
+            let font_y = get_screen_height () / 4 in
+            draw_text text
+                (font_x - font_width / 2) font_y
+                font_size Color.white;
+            
+            let settings_text = "Settings" in
+            let settings_width = (measure_text settings_text font_size) in
+            let settings_y = font_y + font_size * 2 in
+            draw_text settings_text (font_x - settings_width / 2) settings_y font_size Color.white;
+
+            if menu then settings_menu () else ()
+
+        let draw {paddle; ball; blocks; pause; score; lives; menu} =
             let open Raylib in
             begin_drawing ();
 
@@ -347,15 +391,7 @@ module State =
                 draw_rectangle_v block.position block.dimensions block.color
             ) blocks;
 
-            let text =
-                if pause then "Press Up Arrow To Continue"
-                else ""
-            in
-            let font_size = 48 in
-            let font_width = (measure_text text font_size) in            
-            draw_text text
-                (get_screen_width () / 2 - font_width / 2) (get_screen_height () / 4)
-                font_size Color.white;
+            if pause then pause_menu menu else ();
 
             let text = "Score: " ^ string_of_int score in
             let font_size = 24 in
@@ -368,19 +404,7 @@ module State =
             let font_size = 24 in
             draw_text text 25 25 font_size Color.white;
 
-            let dims = 50 in
-            let start_pos_x = get_screen_width () - 25 in
-            let start_pos_y = 25 in
-
-            let start_pos = Vector2.create (float_of_int (start_pos_x - dims)) (float_of_int start_pos_y) in
-            let end_pos = Vector2.create (float_of_int start_pos_x) (float_of_int (start_pos_y + dims)) in
-
-            draw_line_ex start_pos end_pos 10. Color.white;
-            
-            let start_pos = Vector2.create (float_of_int (start_pos_x - dims)) (float_of_int (start_pos_y + dims)) in
-            let end_pos = Vector2.create (float_of_int start_pos_x) (float_of_int start_pos_y) in
-            
-            draw_line_ex start_pos end_pos 10. Color.white;
+            draw_exit_button ();
             
             end_drawing ()
     end
