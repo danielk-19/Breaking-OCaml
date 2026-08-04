@@ -1,8 +1,8 @@
-# Notes of General System Requirements
+# General System Requirements
 
 ## UI
 
-1. Dark, Unsaturated Purple Background
+1. Dark, Unsaturated Gray Background
 2. White Paddle and UI Buttons
 3. Colorful Blocks
 
@@ -10,4 +10,4 @@
 
 1. Paddle Moves Side to Side with Arrow Keys
 2. Basic Physics Integrated for the Ball
-3. TBD
+3. Functional Features Involving a Settings Menu
