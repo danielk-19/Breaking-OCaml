@@ -3,3 +3,6 @@
 
 # Ignore VS Code Settings
 /.vscode/
+
+# Ignore System Metadata
+/.DS_Store
