@@ -20,13 +20,13 @@ let rec loop (state : State.t) =
 
     let state =
       state |>
-      game_state_handler |>
       check_win_lose |>
+      game_state_handler |>
       button_handling |>
       control_handling |>
 
       (fun (state : State.t) ->
-        if (state.gameScreen = Active) then
+        if (state.gameScreen = Active || state.gameScreen = Inactive) then
           state |>
           paddle_move |>
           paddle_update |>

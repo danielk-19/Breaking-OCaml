@@ -4,6 +4,7 @@ open Raylib
 (* Constants *)
 let screen_width = 960
 let screen_height = 720
+let points_per_block = 50
 
 (* Difficulty Settings *)
 let easy_lives = 5
@@ -11,7 +12,7 @@ let medium_lives = 3
 let hard_lives = 1
 
 (* Drawing *)
-let background_color = Color.darkgray
+let background_color = Color.create 5 0 20 255
 let starting_screen_color = Color.black
 let ending_screen_color = Color.black
 let text_color = Color.white
@@ -19,16 +20,20 @@ let text_size = 48
 let text_corner_offset = 25
 
 (* Paddle *)
-let paddle_dim_x = 300.
-let paddle_dim_y = 50.
+let paddle_dim_x = float_of_int screen_width *. 0.2
+let paddle_dim_y = 20.
 let paddle_y_offset = 50.
-let paddle_speed = 900.
+let paddle_speed = 800.
+let paddle_roundness = 1.
+let paddle_smoothness = 50
 let paddle_color = Color.white
 
 (* Ball *)
 let ball_rad = 10.
 let ball_speed = 850.
 let ball_color = Color.white
+let ball_paddle_y_offset = 50.
+let ball_reset_cutoff = 75.
 
 (* Blocks *)
 let block_dim_x = 100.
@@ -36,8 +41,16 @@ let block_dim_y = 50.
 let num_blocks_x = 8
 let num_blocks_y = 4
 let block_offset = 5.
-let block_colors = [Color.blue; Color.red; Color.yellow; Color.green]
+let block_colors = [
+    Color.create 9 33 130 255;
+    Color.create 130 9 21 255;
+    Color.create 158 134 11 255;
+    Color.create 7 94 29 255
+]
 let block_initial_y = 100.
+let block_roundness = 0.3
+let block_smoothness = 30
+let block_outline_color = Color.create 21 5 54 128
 
 (* Menu *)
 let menu_tint = Color.create 0 0 0 128
@@ -48,8 +61,8 @@ let settings_menu_width = float_of_int screen_width *. 0.75
 let settings_menu_height = float_of_int screen_height *. 0.75
 let settings_menu_pos_x = (float_of_int screen_width -. settings_menu_width) /. 2.
 let settings_menu_pos_y = (float_of_int screen_height -. settings_menu_height) /. 2.
-let settings_menu_background_color = Color.lightgray
-let settings_menu_outline_color = Color.black
+let settings_menu_background_color = Color.create 28 9 135 255
+let settings_menu_outline_color = Color.create 9 2 46 255
 
 (* Buttons *)
 let button_outline_color = Color.white
@@ -59,6 +72,7 @@ let exit_button_dims = 50.
 let exit_button_corner_offset = 25.
 let exit_button_thickness = 10.
 let exit_button_color = Color.white
+
 (* Settings Button *)
 let settings_button_height = 100.
 let settings_button_width = 400.
@@ -76,6 +90,7 @@ let difficulty_button_y_offset = 50.
 type gameState = 
     | Start
     | Active
+    | Inactive
     | Pause
     | GameLost
     | GameWon
@@ -213,14 +228,17 @@ module Drawing = struct
     let draw_gameplay (state : State.t) =
         clear_background background_color;
 
-        draw_rectangle_v state.paddle.position state.paddle.dimensions paddle_color;
+        let paddle_rec = Rectangle.create (Vector2.x state.paddle.position) (Vector2.y state.paddle.position) (Vector2.x state.paddle.dimensions) (Vector2.y state.paddle.dimensions) in
+        draw_rectangle_rounded paddle_rec paddle_roundness paddle_smoothness paddle_color;
         draw_circle_v state.ball.position (float_of_int state.ball.radius) ball_color;
             
         List.iter (fun (block : Block.t) ->
-            draw_rectangle_v block.position block.dimensions block.color
+            let block_rec = Rectangle.create (Vector2.x block.position) (Vector2.y block.position) (Vector2.x block.dimensions) (Vector2.y block.dimensions) in
+            draw_rectangle_rounded block_rec block_roundness block_smoothness block.color;
+            draw_rectangle_rounded_lines_ex block_rec block_roundness block_smoothness outline_thickness block_outline_color
         ) state.blocks;
-
-        let text = "Score: " ^ string_of_int state.score in
+        
+        let text = Printf.sprintf "Score: %04d" state.score in
         let font_size = text_size / 2 in
         let font_width = (measure_text text font_size) in
         draw_text text
@@ -253,7 +271,7 @@ module Drawing = struct
     let game_winner_screen (state : State.t) =
         clear_background ending_screen_color;
 
-        let text = "Winner! Score: " ^ string_of_int state.score in
+        let text = Printf.sprintf "Winner! Score: %04d" state.score in
         let font_width = (measure_text text text_size) in            
         draw_text text
             ((screen_width - font_width) / 2) ((screen_height - text_size) / 2)
@@ -324,7 +342,7 @@ module Utility = struct
                 
                 if (screen_constraint_met && menu_constraint_met && button_pressed bounds && not state.pressing_button) then
                     match button.action with
-                    | GameStart -> {state with gameScreen = Active; pressing_button = true}
+                    | GameStart -> {state with gameScreen = Inactive; pressing_button = true}
                     | GameSettings -> {state with gameMenu = Settings; pressing_button = true}
                     | GameExit -> {state with gameScreen = Terminate; pressing_button = true}
                     | ChangeDifficulty -> {(difficulty_handling state button) with pressing_button = true}
@@ -342,7 +360,7 @@ module Utility = struct
 
     let ball_reset_required (state : State.t) =
         let ball, paddle = (state.ball, state.paddle) in
-        ((Vector2.y ball.position -. float_of_int ball.radius) >= Vector2.y paddle.position +. 50.)
+        ((Vector2.y ball.position -. float_of_int ball.radius) >= Vector2.y paddle.position +. ball_reset_cutoff)
 
     let block_collision (state : State.t) (block : Block.t) =
         let ball = state.ball in
@@ -499,7 +517,7 @@ module Utility = struct
 
         let random_num = Random.int 2 in
         let dir_x, dir_y =
-            if (random_num = 0) then (1., 1.) else (-1., 1.)
+            if (random_num = 0) then (1., -1.) else (-1., -1.)
         in
 
         (vel_x *. dir_x, vel_y *. dir_y)
@@ -516,13 +534,11 @@ module Utility = struct
         in
 
         let ball =
-            let pos_x = ((float_of_int screen_width) /. 2.) in
-            let pos_y = ((float_of_int screen_height) /. 2.) in
-
-            let vel_x, vel_y = random_ball_velocity () in
+            let pos_x = (Vector2.x paddle.position +. Vector2.x paddle.dimensions /. 2.) in
+            let pos_y = (Vector2.y paddle.position -. ball_rad -. ball_paddle_y_offset) in
 
             let position = Vector2.create pos_x pos_y in
-            let velocity = Vector2.create vel_x vel_y in
+            let velocity = Vector2.create 0. 0. in
             let radius = (int_of_float ball_rad) in
             {Ball.position; velocity; radius}
         in
@@ -601,25 +617,50 @@ module Utility = struct
             if (is_mouse_button_pressed MouseButton.Left && not (button_pressed menu_bounds)) then {state with gameMenu = Main}
             else button_handling state
 
+    let inactive_state_handler (state : State.t) =
+        match state.gameScreen with
+        | Inactive ->
+            if (is_key_pressed Key.Up) then
+                let vx, vy = random_ball_velocity () in
+                state.ball.velocity <- Vector2.create vx vy;
+                {state with gameScreen = Active}
+            else
+                let mouse_pos_x =
+                    if (get_mouse_x () - int_of_float (Vector2.x state.paddle.dimensions /. 2.) < 0) then Vector2.x state.paddle.dimensions /. 2.
+                    else if (get_mouse_x () > screen_width - int_of_float (Vector2.x state.paddle.dimensions /. 2.)) then float_of_int screen_width -. Vector2.x state.paddle.dimensions /. 2.
+                    else float_of_int (get_mouse_x ())
+                in
+                state.paddle.position <- Vector2.create (mouse_pos_x -. Vector2.x state.paddle.dimensions /. 2.) (Vector2.y state.paddle.position);
+                state.ball.velocity <- Vector2.create 0. 0.;
+                state.ball.position <- Vector2.create (Vector2.x state.paddle.position +. Vector2.x state.paddle.dimensions /. 2.) (Vector2.y state.paddle.position -. ball_rad -. ball_paddle_y_offset);
+                state
+        | _ -> state
+
     let control_handling (state : State.t) =
         match state.gameScreen with
         | Start | Pause ->
             if (state.gameScreen = Pause && is_key_pressed Key.Escape) then {state with gameScreen = Start}
-            else if (state.gameScreen = Pause && is_key_pressed Key.Up) then {state with gameScreen = Active}
+            else if (state.gameScreen = Pause && is_key_pressed Key.Up) then {state with gameScreen = if (Vector2.x state.ball.velocity = 0. && Vector2.y state.ball.velocity = 0.) then Inactive else Active}
             else menu_control_handling state
-        | Active | GameLost | GameWon -> 
+        | Active | Inactive | GameLost | GameWon ->
             if (is_key_pressed Key.R) then reset ()
-            else if (state.gameScreen = Active && is_key_pressed Key.Escape) then {state with gameScreen = Pause}
-            else button_handling state
+            else if ((state.gameScreen = Active || state.gameScreen = Inactive) && is_key_pressed Key.Escape) then {state with gameScreen = Pause}
+            else button_handling state |> inactive_state_handler
         | Terminate -> state
 
     (* Paddle Movement *)
     let paddle_move (state : State.t) =
+        let rate = (1. /. float_of_int (get_fps ())) in
         let paddle = state.paddle in
         let velocity =
-          if (is_key_down Key.Left && (Vector2.x paddle.position) > 0.) then -.paddle_speed
+          if (is_key_down Key.Left && (Vector2.x paddle.position) > 0.) then 
+            if (Vector2.x paddle.position -. paddle_speed *. rate < 0.) then -.(Vector2.x paddle.position)
+            else -.(paddle_speed *. rate)
           else if (is_key_down Key.Right &&
-            (Vector2.x paddle.position) < ((float_of_int screen_width) -. (Vector2.x paddle.dimensions))) then paddle_speed
+            (Vector2.x paddle.position) < ((float_of_int screen_width) -. (Vector2.x paddle.dimensions))) then
+                let right_pos = Vector2.x paddle.position +. Vector2.x paddle.dimensions in
+                if (right_pos +. paddle_speed *. rate > float_of_int screen_width) then (float_of_int screen_width -. right_pos)
+                else (paddle_speed *. rate)
           else 0.
         in
 
@@ -628,16 +669,13 @@ module Utility = struct
         state
     
     let paddle_update (state : State.t) =
-        let rate = (1. /. float_of_int (get_fps ())) in
-        state.paddle.position <- Vector2.create (Vector2.x state.paddle.position +. state.paddle.velocity *. rate) (Vector2.y state.paddle.position);
+        state.paddle.position <- Vector2.create (Vector2.x state.paddle.position +. state.paddle.velocity) (Vector2.y state.paddle.position);
         state
     
     (* Ball Movement *)
     let handle_ball_reset (state : State.t) =
-        let vx, vy = random_ball_velocity () in
         state.lives <- state.lives - 1;
-        state.ball.velocity <- Vector2.create vx vy;
-        state.ball.position <- Vector2.create (float_of_int screen_width /. 2.) (float_of_int screen_height /. 2.)
+        state.gameScreen <- Inactive
 
     let ball_update (state : State.t) =
         let rate = (1. /. float_of_int (get_fps ())) in
@@ -652,7 +690,7 @@ module Utility = struct
         else state
 
     let score_update (state : State.t) =
-        state.score <- num_blocks_x * num_blocks_y - List.length state.blocks;
+        state.score <- (num_blocks_x * num_blocks_y - List.length state.blocks) * points_per_block;
         state
 
     let game_state_adjuster (state : State.t) =
@@ -665,7 +703,7 @@ module Utility = struct
         match state.gameScreen with
         | Start -> start_menu state |> draw_game_menu
         | Pause -> pause_menu state |> draw_game_menu
-        | Active -> active_screen state
+        | Active | Inactive -> active_screen state
         | GameLost -> game_over_screen state
         | GameWon -> game_winner_screen state
         | Terminate -> state
