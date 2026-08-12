@@ -4,11 +4,11 @@ open Breakout_tools
 open Objects
 
 let setup () =
-  init_window screen_width screen_height "Breakout";
+  init_window screen_width screen_height "Breaking OCaml: A Breakout Game";
   set_target_fps (get_monitor_refresh_rate 0);
   set_exit_key Key.Null;
 
-  Utility.reset ()
+  Utility.start ()
 
 let rec loop (state : State.t) =
   match (window_should_close () || state.gameScreen = Terminate) with
@@ -23,7 +23,6 @@ let rec loop (state : State.t) =
       check_win_lose |>
       game_state_handler |>
       button_handling |>
-      control_handling |>
 
       (fun (state : State.t) ->
         if (state.gameScreen = Active || state.gameScreen = Inactive) then
@@ -35,6 +34,7 @@ let rec loop (state : State.t) =
         else state
       ) |>
 
+      control_handling |>
       score_update |>
       game_state_adjuster
     in
@@ -42,5 +42,5 @@ let rec loop (state : State.t) =
     end_drawing ();
 
     loop state
-  
+
 let () = setup () |> loop
