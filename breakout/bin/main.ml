@@ -1,7 +1,8 @@
 (* Basic Breakout Implementation *)
 open Raylib
 open Breakout_tools
-open Objects
+open Types
+open Engine
 
 let setup () =
   init_window screen_width screen_height "Breaking OCaml: A Breakout Game";

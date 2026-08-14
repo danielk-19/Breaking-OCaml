@@ -1,336 +1,7 @@
-(* Implemented Modules for Breakout *)
+(* Engine for Breakout *)
 open Raylib
-
-(* Constants *)
-let screen_width = 960
-let screen_height = 720
-let points_per_block = 50
-
-(* Difficulty Settings *)
-let easy_lives = 5
-let medium_lives = 3
-let hard_lives = 1
-
-(* Drawing *)
-let background_color = Color.create 5 0 20 255
-let starting_screen_color = Color.black
-let ending_screen_color = Color.black
-let text_color = Color.white
-let text_size = 48
-let text_corner_offset = 25
-
-(* Paddle *)
-let paddle_dim_x = float_of_int screen_width *. 0.2
-let paddle_dim_y = 20.
-let paddle_y_offset = 50.
-let paddle_speed = 800.
-let paddle_roundness = 1.
-let paddle_smoothness = 50
-let paddle_color = Color.white
-
-(* Ball *)
-let ball_rad = 10.
-let ball_speed = 850.
-let ball_color = Color.white
-let ball_paddle_y_offset = 50.
-let ball_reset_cutoff = 75.
-
-(* Blocks *)
-let block_dim_x = 100.
-let block_dim_y = 50.
-let num_blocks_x = 8
-let num_blocks_y = 4
-let block_offset = 5.
-let block_colors = [
-    Color.create 9 33 130 255;
-    Color.create 130 9 21 255;
-    Color.create 158 134 11 255;
-    Color.create 7 94 29 255
-]
-let block_initial_y = 100.
-let block_roundness = 0.3
-let block_smoothness = 30
-let block_outline_color = Color.create 21 5 54 128
-
-(* Menu *)
-let menu_tint = Color.create 0 0 0 128
-let outline_thickness = 3.
-let menu_roundness = 0.25
-let menu_smoothness = 25
-let settings_menu_width = float_of_int screen_width *. 0.75
-let settings_menu_height = float_of_int screen_height *. 0.75
-let settings_menu_pos_x = (float_of_int screen_width -. settings_menu_width) /. 2.
-let settings_menu_pos_y = (float_of_int screen_height -. settings_menu_height) /. 2.
-let settings_menu_background_color = Color.create 28 9 135 255
-let settings_menu_outline_color = Color.create 9 2 46 255
-let settings_spacing_offset = 10.
-
-(* Buttons *)
-let button_outline_color = Color.white
-
-(* Exit Button *)
-let exit_button_dims = 50.
-let exit_button_corner_offset = 25.
-let exit_button_thickness = 10.
-let exit_button_color = Color.white
-
-(* Settings Button *)
-let settings_button_height = 100.
-let settings_button_width = 400.
-
-(* Start Button *)
-let start_button_height = 100.
-let start_button_width = 400.
-
-(* Difficulty Button *)
-let difficulty_button_height = settings_menu_height *. 0.2
-let difficulty_button_width = settings_menu_width *. 0.6
-let difficulty_button_y_offset = 50.
-
-(* Custom Types *)
-type gameState = 
-    | Start
-    | Active
-    | Inactive
-    | Pause
-    | GameLost
-    | GameWon
-    | Terminate
-
-type menuState =
-    | Main
-    | Settings
-
-type gameDifficulty =
-    | Easy
-    | Medium
-    | Hard
-
-type buttonAction =
-    | GameStart
-    | GameSettings
-    | GameExit
-    | ChangeDifficulty
-
-module Ball =
-    struct
-        type t = {
-            mutable position : Vector2.t;
-            mutable velocity : Vector2.t;
-            radius : int;
-        }
-    end
-
-module Paddle =
-    struct
-        type t = {
-            mutable position : Vector2.t;
-            mutable velocity : float;
-            dimensions : Vector2.t;
-        }
-    end
-
-module Block =
-    struct
-        type t = {
-            position : Vector2.t;
-            dimensions : Vector2.t;
-            color : Color.t;
-        }
-    end
-
-module Button =
-    struct
-        type t = {
-            position : Vector2.t;
-            dimensions : Vector2.t;
-            mutable label : string;
-            action : buttonAction;
-            screen_constraints : gameState list;
-            menu_constraints : menuState list;
-        }
-    end
-
-module State =
-    struct
-        type t = {
-            paddle : Paddle.t;
-            ball : Ball.t;
-            mutable blocks : Block.t list;
-            mutable gameScreen : gameState;
-            mutable gameMenu : menuState;
-            mutable difficulty : gameDifficulty;
-            mutable score : int;
-            mutable lives : int;
-            buttons : Button.t list;
-            mutable pressing_button : bool;
-            mutable level : int;
-        }
-    end
-
-(* Drawing Methods *)
-module Drawing = struct
-
-    let draw_exit_button (button : Button.t) =
-        let dims = Vector2.x button.dimensions in
-        let start_pos_x, start_pos_y = (Vector2.x button.position, Vector2.y button.position) in
-
-        let start_pos = Vector2.create start_pos_x start_pos_y in
-        let end_pos = Vector2.create (start_pos_x +. dims) (start_pos_y +. dims) in
-
-        draw_line_ex start_pos end_pos exit_button_thickness exit_button_color;
-            
-        let start_pos = Vector2.create start_pos_x (start_pos_y +. dims) in
-        let end_pos = Vector2.create (start_pos_x +. dims) start_pos_y in
-            
-        draw_line_ex start_pos end_pos exit_button_thickness exit_button_color
-    
-    let draw_button (button : Button.t) =
-        match button.label with
-        | "Exit" -> draw_exit_button button
-        | _ ->
-            let px, py = (Vector2.x button.position, Vector2.y button.position) in
-            let dimx, dimy = (Vector2.x button.dimensions, Vector2.y button.dimensions) in
-            draw_rectangle_lines_ex (Rectangle.create px py dimx dimy) outline_thickness button_outline_color;
-
-            let text_width = measure_text button.label text_size in
-            let button_center_w, button_center_h = (px +. dimx /. 2., py +. dimy /. 2.) in
-            let tx, ty = (int_of_float button_center_w - text_width / 2, int_of_float button_center_h - text_size / 2) in
-            draw_text button.label tx ty text_size text_color
-        
-    let settings_menu (state : State.t) =
-        draw_rectangle 0 0 screen_width screen_height menu_tint;
-
-        let settings_box = Rectangle.create settings_menu_pos_x settings_menu_pos_y settings_menu_width settings_menu_height in
-
-        draw_rectangle_rounded settings_box menu_roundness menu_smoothness settings_menu_background_color;
-        draw_rectangle_rounded_lines_ex settings_box menu_roundness menu_smoothness outline_thickness settings_menu_outline_color;
-
-        let settings_font_size = text_size / 2 in
-
-        let lives_text = "Lives: " ^ string_of_int state.lives in
-        let lives_width = measure_text lives_text settings_font_size in
-        draw_text lives_text
-            (int_of_float (settings_menu_pos_x +. (settings_menu_width -. float_of_int lives_width) /. 2.))
-            (int_of_float (settings_menu_pos_y +. difficulty_button_y_offset +. difficulty_button_height +. settings_spacing_offset))
-            settings_font_size text_color;
-
-        let ball_text = "Ball Speed: " ^ string_of_float ball_speed in
-        let ball_text_width = measure_text ball_text settings_font_size in
-        draw_text ball_text
-            (int_of_float (settings_menu_pos_x +. (settings_menu_width -. float_of_int ball_text_width) /. 2.))
-            (int_of_float (settings_menu_pos_y +. difficulty_button_y_offset +. difficulty_button_height +. float_of_int settings_font_size +. 2. *. settings_spacing_offset))
-            settings_font_size text_color;
-
-        let paddle_text = "Paddle Length/Speed: " ^ string_of_float (Vector2.x state.paddle.dimensions) ^ " | " ^ string_of_float paddle_speed in
-        let paddle_text_width = measure_text paddle_text settings_font_size in
-        draw_text paddle_text
-            (int_of_float (settings_menu_pos_x +. (settings_menu_width -. float_of_int paddle_text_width) /. 2.))
-            (int_of_float (settings_menu_pos_y +. difficulty_button_y_offset +. difficulty_button_height +. float_of_int (settings_font_size * 2) +. 3. *. settings_spacing_offset))
-            settings_font_size text_color;
-
-        state
-
-    let draw_game_menu (state : State.t) =
-        match state.gameMenu with
-        | Main -> state
-        | Settings -> settings_menu state
-
-    let start_menu (state : State.t) =
-        clear_background starting_screen_color;
-
-        let text = "Breaking OCaml" in
-        let font_size = text_size * 4 / 3 in
-        let font_width = (measure_text text font_size) in
-        let font_x = (screen_width - font_width) / 2 in
-        let font_y = screen_height / 8 in
-        draw_text text
-            font_x font_y
-            font_size text_color;
-
-        state
-
-    let draw_gameplay (state : State.t) =
-        clear_background background_color;
-
-        let paddle_rec = Rectangle.create (Vector2.x state.paddle.position) (Vector2.y state.paddle.position) (Vector2.x state.paddle.dimensions) (Vector2.y state.paddle.dimensions) in
-        draw_rectangle_rounded paddle_rec paddle_roundness paddle_smoothness paddle_color;
-        draw_circle_v state.ball.position (float_of_int state.ball.radius) ball_color;
-            
-        List.iter (fun (block : Block.t) ->
-            let block_rec = Rectangle.create (Vector2.x block.position) (Vector2.y block.position) (Vector2.x block.dimensions) (Vector2.y block.dimensions) in
-            draw_rectangle_rounded block_rec block_roundness block_smoothness block.color;
-            draw_rectangle_rounded_lines_ex block_rec block_roundness block_smoothness outline_thickness block_outline_color
-        ) state.blocks;
-        
-        let text = Printf.sprintf "Score: %04d" state.score in
-        let font_size = text_size / 2 in
-        let font_width = (measure_text text font_size) in
-        draw_text text
-            ((screen_width - font_width) / 2) text_corner_offset
-            font_size text_color;
-            
-        let text = "Lives: " ^ string_of_int state.lives in
-        draw_text text text_corner_offset text_corner_offset font_size text_color;
-
-        let text = "Level: " ^ string_of_int state.level in
-        draw_text text text_corner_offset (screen_height - text_corner_offset - font_size) font_size text_color
-
-    let active_screen (state : State.t) =
-        draw_gameplay state;
-            
-        state
-
-    let pause_menu (state : State.t) =
-        draw_gameplay state;
-
-        draw_rectangle 0 0 screen_width screen_height menu_tint;
-
-        let text = "Press Up Arrow To Continue" in
-        let font_width = (measure_text text text_size) in
-        let font_x = (screen_width - font_width) / 2 in
-        let font_y = screen_height / 3 in
-        draw_text text
-            font_x font_y
-            text_size text_color;
-            
-        state
-
-    let game_winner_screen (state : State.t) =
-        clear_background ending_screen_color;
-
-        let winner_text = "Winner!" in
-        let winner_width = (measure_text winner_text text_size) in            
-        draw_text winner_text
-            ((screen_width - winner_width) / 2) (screen_height / 2 - text_size)
-            text_size text_color;
-
-        let completion_text = Printf.sprintf "Levels Cleared: %02d Score: %04d" (state.level - 1) state.score in
-        let completion_width = (measure_text completion_text text_size) in            
-        draw_text completion_text
-            ((screen_width - completion_width) / 2) (screen_height / 2)
-            text_size text_color;
-
-        state
-
-    let game_over_screen (state : State.t) =
-        clear_background ending_screen_color;
-
-        let game_over_text = "Game Over!" in
-        let game_over_width = (measure_text game_over_text text_size) in
-        draw_text game_over_text
-            ((screen_width - game_over_width) / 2) (screen_height / 2 - text_size)
-            text_size text_color;
-
-        let score_text = Printf.sprintf "Score: %04d" state.score in
-        let score_width = (measure_text score_text text_size) in
-        draw_text score_text
-            ((screen_width - score_width) / 2) (screen_height / 2)
-            text_size text_color;
-
-        state
-
-end
+open Types
+open Drawing
 
 (* Utility Methods *)
 module Utility = struct
@@ -345,10 +16,24 @@ module Utility = struct
         }
 
     let change_difficulty (state : State.t) =
-        match state.difficulty with
-        | Easy -> {state with lives = easy_lives}
-        | Medium -> {state with lives = medium_lives}
-        | Hard -> {state with lives = hard_lives}
+        (match state.difficulty with
+        | Easy ->
+            state.lives <- easy_lives;
+            state.paddle.dimensions <- Vector2.create (paddle_dim_x *. increase_multiplier) (Vector2.y state.paddle.dimensions);
+            state.paddle.max_speed <- paddle_speed *. increase_multiplier;
+            state.ball.max_speed <- ball_speed *. decrease_multiplier
+        | Medium ->
+            state.lives <- medium_lives;
+            state.paddle.dimensions <- Vector2.create (paddle_dim_x) (Vector2.y state.paddle.dimensions);
+            state.paddle.max_speed <- paddle_speed;
+            state.ball.max_speed <- ball_speed
+        | Hard ->
+            state.lives <- hard_lives;
+            state.paddle.dimensions <- Vector2.create (paddle_dim_x *. decrease_multiplier) (Vector2.y state.paddle.dimensions);
+            state.paddle.max_speed <- paddle_speed *. decrease_multiplier;
+            state.ball.max_speed <- ball_speed *. increase_multiplier
+        );
+        state
 
     let difficulty_handling (state : State.t) (button : Button.t) =
         (match state.difficulty with
@@ -385,7 +70,7 @@ module Utility = struct
                 let screen_constraint_met = List.is_empty button.screen_constraints || button_screen_constraint_check state.gameScreen button.screen_constraints in
                 let menu_constraint_met = List.is_empty button.menu_constraints || button_menu_constraint_check state.gameMenu button.menu_constraints in
 
-                if (screen_constraint_met && menu_constraint_met) then Drawing.draw_button button else ();
+                if (screen_constraint_met && menu_constraint_met) then Drawer.draw_button button else ();
                 
                 if (screen_constraint_met && menu_constraint_met && button_pressed bounds && not state.pressing_button) then
                     match button.action with
@@ -557,10 +242,10 @@ module Utility = struct
                 ball_block_collision_velocity state block
     
     (* Game State Setup *)
-    let random_ball_velocity () =
+    let random_ball_velocity (state : State.t) =
         let random_float = Random.float 1. in
-        let vel_x = ball_speed *. random_float in
-        let vel_y = sqrt (ball_speed ** 2. -. vel_x ** 2.) in
+        let vel_x = state.ball.max_speed *. random_float in
+        let vel_y = sqrt (state.ball.max_speed ** 2. -. vel_x ** 2.) in
 
         let random_num = Random.int 2 in
         let dir_x, dir_y =
@@ -580,8 +265,8 @@ module Utility = struct
             make_blocks (x +. block_dim_x +. block_offset) y (block :: acc) color
 
     let reset (state : State.t) =
-        let pos_x = ((float_of_int screen_width) /. 2. -. paddle_dim_x /. 2.) in
-        let pos_y = ((float_of_int screen_height) -. paddle_dim_y /. 2. -. paddle_y_offset) in
+        let pos_x = ((float_of_int screen_width) /. 2. -. Vector2.x state.paddle.dimensions /. 2.) in
+        let pos_y = ((float_of_int screen_height) -. Vector2.y state.paddle.dimensions /. 2. -. paddle_y_offset) in
         state.paddle.position <- Vector2.create pos_x pos_y;
         state.paddle.velocity <- 0.;
         state.ball.velocity <- Vector2.create 0. 0.;
@@ -597,8 +282,9 @@ module Utility = struct
 
             let position = Vector2.create pos_x pos_y in
             let velocity = 0. in
+            let max_speed = paddle_speed in
             let dimensions = Vector2.create paddle_dim_x paddle_dim_y in
-            {Paddle.position; velocity; dimensions}
+            {Paddle.position; velocity; max_speed; dimensions}
         in
 
         let ball =
@@ -607,8 +293,9 @@ module Utility = struct
 
             let position = Vector2.create pos_x pos_y in
             let velocity = Vector2.create 0. 0. in
+            let max_speed = ball_speed in
             let radius = (int_of_float ball_rad) in
-            {Ball.position; velocity; radius}
+            {Ball.position; velocity; max_speed; radius}
         in
 
         let blocks =
@@ -678,7 +365,7 @@ module Utility = struct
         match state.gameScreen with
         | Inactive ->
             if (is_key_pressed Key.Up) then
-                let vx, vy = random_ball_velocity () in
+                let vx, vy = random_ball_velocity state in
                 state.ball.velocity <- Vector2.create vx vy;
                 {state with gameScreen = Active}
             else
@@ -712,13 +399,13 @@ module Utility = struct
         let paddle = state.paddle in
         let velocity =
           if (is_key_down Key.Left && (Vector2.x paddle.position) > 0.) then 
-            if (Vector2.x paddle.position -. paddle_speed *. rate < 0.) then -.(Vector2.x paddle.position)
-            else -.(paddle_speed *. rate)
+            if (Vector2.x paddle.position -. paddle.max_speed *. rate < 0.) then -.(Vector2.x paddle.position)
+            else -.(paddle.max_speed *. rate)
           else if (is_key_down Key.Right &&
             (Vector2.x paddle.position) < ((float_of_int screen_width) -. (Vector2.x paddle.dimensions))) then
                 let right_pos = Vector2.x paddle.position +. Vector2.x paddle.dimensions in
-                if (right_pos +. paddle_speed *. rate > float_of_int screen_width) then (float_of_int screen_width -. right_pos)
-                else (paddle_speed *. rate)
+                if (right_pos +. paddle.max_speed *. rate > float_of_int screen_width) then (float_of_int screen_width -. right_pos)
+                else (paddle.max_speed *. rate)
           else 0.
         in
 
@@ -743,7 +430,7 @@ module Utility = struct
 
     (* Game State Handling *)
     let check_win_lose (state : State.t) =
-        if (state.level > 3) then {state with gameScreen = GameWon}
+        if (state.level > num_levels) then {state with gameScreen = GameWon}
         else if (state.lives = 0) then {state with gameScreen = GameLost}
         else state
 
@@ -760,7 +447,7 @@ module Utility = struct
         | _ -> {state with gameMenu = Main}
     
     let game_state_handler (state : State.t) =
-        let open Drawing in
+        let open Drawer in
         match state.gameScreen with
         | Start -> start_menu state |> draw_game_menu
         | Pause -> pause_menu state |> draw_game_menu
